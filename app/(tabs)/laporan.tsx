@@ -1,291 +1,169 @@
-import { useEffect, useState } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  Pressable,
-  TextInput,
-  ActivityIndicator,
-  Alert,
-  Modal,
-  FlatList,
-} from 'react-native';
-import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
+import { View, Text, FlatList, Pressable, RefreshControl } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
-import { formatRupiah } from '../../lib/format';
-import { Field } from '../../components/Field';
-import type { Barang, Pesanan } from '../../lib/types';
+import { formatRupiah, formatTanggal } from '../../lib/format';
 
-interface ItemKeranjang {
-  barang: Barang;
-  qty: string;
+type PeriodeKey = 'harian' | 'mingguan' | 'bulanan' | 'tahunan';
+
+const PERIODE_OPTIONS: { key: PeriodeKey; label: string }[] = [
+  { key: 'harian', label: 'Hari ini' },
+  { key: 'mingguan', label: 'Minggu ini' },
+  { key: 'bulanan', label: 'Bulan ini' },
+  { key: 'tahunan', label: 'Tahun ini' },
+];
+
+interface BarisLaporan {
+  pesanan_id: string;
+  nomor_pesanan: string;
+  nama_pembeli: string;
+  omzet_kotor: number;
+  omzet_bersih: number;
+  modal: number;
+  tanggal_lunas: string;
 }
 
-// Membuat objek Barang minimal dari data snapshot pesanan_item,
-// dipakai untuk mengisi keranjang saat memuat pesanan yang mau diedit
-function barangDariSnapshot(item: {
-  barang_id: string;
-  nama_barang_saat_itu: string;
-  satuan_saat_itu: string;
-  harga_jual_saat_itu: number;
-  harga_modal_saat_itu: number;
-}): Barang {
-  return {
-    id: item.barang_id,
-    nama: item.nama_barang_saat_itu,
-    satuan: item.satuan_saat_itu,
-    harga_jual: item.harga_jual_saat_itu,
-    harga_modal: item.harga_modal_saat_itu,
-    is_active: true,
-    created_at: '',
-    updated_at: '',
-  };
-}
-
-export default function EditPesananScreen() {
-  const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
-
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [namaPembeli, setNamaPembeli] = useState('');
-  const [catatan, setCatatan] = useState('');
-  const [keranjang, setKeranjang] = useState<ItemKeranjang[]>([]);
-  const [barangAktif, setBarangAktif] = useState<Barang[]>([]);
-  const [pickerVisible, setPickerVisible] = useState(false);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    (async () => {
-      const [{ data: pesanan }, { data: barangList }] = await Promise.all([
-        supabase.from('pesanan').select('*, pesanan_item(*)').eq('id', id).single(),
-        supabase.from('barang').select('*').eq('is_active', true).order('nama'),
-      ]);
-
-      if (pesanan) {
-        const p = pesanan as Pesanan;
-        if (p.status === 'lunas') {
-          Alert.alert('Tidak bisa diedit', 'Pesanan yang sudah lunas tidak bisa diedit lagi.');
-          router.back();
-          return;
-        }
-        setNamaPembeli(p.nama_pembeli);
-        setCatatan(p.catatan ?? '');
-        setKeranjang((p.pesanan_item ?? []).map((it) => ({ barang: barangDariSnapshot(it), qty: String(it.qty) })));
-      }
-      if (barangList) setBarangAktif(barangList as Barang[]);
-      setLoading(false);
-    })();
-  }, [id]);
-
-  const tambahKeKeranjang = (barang: Barang) => {
-    setPickerVisible(false);
-    setKeranjang((prev) => {
-      const sudahAda = prev.find((k) => k.barang.id === barang.id);
-      if (sudahAda) {
-        return prev.map((k) =>
-          k.barang.id === barang.id ? { ...k, qty: String(Number(k.qty || '0') + 1) } : k
-        );
-      }
-      return [...prev, { barang, qty: '1' }];
-    });
-  };
-
-  const ubahQty = (barangId: string, qty: string) => {
-    setKeranjang((prev) => prev.map((k) => (k.barang.id === barangId ? { ...k, qty } : k)));
-  };
-
-  const hapusDariKeranjang = (barangId: string) => {
-    setKeranjang((prev) => prev.filter((k) => k.barang.id !== barangId));
-  };
-
-  const total = keranjang.reduce((acc, k) => acc + Number(k.qty || 0) * k.barang.harga_jual, 0);
-
-  const simpan = async () => {
-    setError('');
-    if (!namaPembeli.trim()) {
-      setError('Nama pembeli wajib diisi');
-      return;
-    }
-    if (keranjang.length === 0) {
-      setError('Minimal harus ada satu barang');
-      return;
-    }
-    if (keranjang.some((k) => !k.qty || Number(k.qty) <= 0)) {
-      setError('Jumlah (qty) semua barang harus lebih dari 0');
-      return;
-    }
-
-    setSaving(true);
-
-    const { error: errPesanan } = await supabase
-      .from('pesanan')
-      .update({ nama_pembeli: namaPembeli.trim(), catatan: catatan.trim() || null })
-      .eq('id', id);
-
-    if (errPesanan) {
-      setSaving(false);
-      Alert.alert('Gagal menyimpan pesanan', errPesanan.message);
-      return;
-    }
-
-    // Ganti semua item lama dengan yang baru (cara paling aman biar sinkron)
-    const { error: errHapus } = await supabase.from('pesanan_item').delete().eq('pesanan_id', id);
-    if (errHapus) {
-      setSaving(false);
-      Alert.alert('Gagal memperbarui barang', errHapus.message);
-      return;
-    }
-
-    const itemRows = keranjang.map((k) => ({
-      pesanan_id: id,
-      barang_id: k.barang.id,
-      nama_barang_saat_itu: k.barang.nama,
-      satuan_saat_itu: k.barang.satuan,
-      qty: Number(k.qty),
-      harga_jual_saat_itu: k.barang.harga_jual,
-      harga_modal_saat_itu: k.barang.harga_modal,
-    }));
-
-    const { error: errItem } = await supabase.from('pesanan_item').insert(itemRows);
-    setSaving(false);
-
-    if (errItem) {
-      Alert.alert('Gagal menyimpan barang pesanan', errItem.message);
-      return;
-    }
-
-    router.back();
-  };
-
-  if (loading) {
-    return (
-      <SafeAreaView className="flex-1 bg-canvas items-center justify-center">
-        <ActivityIndicator color="#0F6E56" />
-      </SafeAreaView>
-    );
+function awalPeriode(key: PeriodeKey): Date {
+  const now = new Date();
+  if (key === 'harian') {
+    now.setHours(0, 0, 0, 0);
+    return now;
   }
+  if (key === 'mingguan') {
+    const hari = now.getDay(); // 0 = Minggu
+    const selisih = now.getDate() - hari + (hari === 0 ? -6 : 1); // mulai Senin
+    const d = new Date(now);
+    d.setDate(selisih);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+  if (key === 'bulanan') {
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  }
+  return new Date(now.getFullYear(), 0, 1); // tahunan
+}
+
+export default function LaporanScreen() {
+  const [periode, setPeriode] = useState<PeriodeKey>('harian');
+  const [data, setData] = useState<BarisLaporan[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const muatData = useCallback(async (p: PeriodeKey) => {
+    setLoading(true);
+    const { data: hasil, error } = await supabase
+      .from('laporan_omzet')
+      .select('*')
+      .gte('tanggal_lunas', awalPeriode(p).toISOString())
+      .order('tanggal_lunas', { ascending: false });
+
+    if (!error && hasil) setData(hasil as BarisLaporan[]);
+    setLoading(false);
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      muatData(periode);
+    }, [muatData, periode])
+  );
+
+  const ringkasan = useMemo(() => {
+    const kotor = data.reduce((acc, d) => acc + Number(d.omzet_kotor), 0);
+    const bersih = data.reduce((acc, d) => acc + Number(d.omzet_bersih), 0);
+    const modal = data.reduce((acc, d) => acc + Number(d.modal), 0);
+    return { kotor, bersih, modal, jumlahPesanan: data.length };
+  }, [data]);
 
   return (
-    <SafeAreaView className="flex-1 bg-canvas">
-      <Stack.Screen options={{ headerShown: false }} />
-      <View className="flex-row items-center px-5 pt-4 pb-2">
-        <Pressable onPress={() => router.back()} hitSlop={8} className="mr-3">
-          <Ionicons name="arrow-back" size={22} color="#1F2320" />
-        </Pressable>
-        <Text className="text-xl font-semibold text-ink">Edit pesanan</Text>
+    <SafeAreaView className="flex-1 bg-canvas" edges={['top']}>
+      <View className="px-5 pt-4 pb-2">
+        <Text className="text-2xl font-semibold text-ink mb-3">Laporan</Text>
+
+        <FlatList
+          horizontal
+          data={PERIODE_OPTIONS}
+          keyExtractor={(item) => item.key}
+          showsHorizontalScrollIndicator={false}
+          ItemSeparatorComponent={() => <View className="w-2" />}
+          renderItem={({ item }) => (
+            <Pressable
+              onPress={() => setPeriode(item.key)}
+              className={`px-4 py-2 rounded-pill border ${
+                periode === item.key ? 'bg-ink border-ink' : 'bg-surface border-black/10'
+              }`}
+            >
+              <Text className={periode === item.key ? 'text-white text-sm' : 'text-ink-soft text-sm'}>
+                {item.label}
+              </Text>
+            </Pressable>
+          )}
+        />
       </View>
 
-      <ScrollView className="flex-1 px-5 pt-4" keyboardShouldPersistTaps="handled">
-        <Field label="Nama pembeli" value={namaPembeli} onChangeText={setNamaPembeli} />
-
-        <Text className="text-sm text-ink-soft mb-1.5">Barang dipesan</Text>
-        <View className="bg-surface rounded-card border border-black/5 p-2 mb-2">
-          {keranjang.length === 0 ? (
-            <Text className="text-ink-faint text-sm py-4 text-center">
-              Belum ada barang ditambahkan
-            </Text>
-          ) : (
-            keranjang.map((k) => (
-              <View
-                key={k.barang.id}
-                className="flex-row items-center py-2.5 px-2 border-b border-black/5"
-              >
-                <View className="flex-1">
-                  <Text className="text-ink text-sm font-medium">{k.barang.nama}</Text>
-                  <Text className="text-ink-faint text-xs">
-                    {formatRupiah(k.barang.harga_jual)} / {k.barang.satuan}
-                  </Text>
-                </View>
-                <TextInput
-                  value={k.qty}
-                  onChangeText={(v) => ubahQty(k.barang.id, v)}
-                  keyboardType="numeric"
-                  className="w-16 text-center bg-canvas rounded-lg py-2 text-ink mr-2"
-                />
-                <Text className="w-24 text-right text-sm text-ink font-medium mr-2">
-                  {formatRupiah(Number(k.qty || 0) * k.barang.harga_jual)}
-                </Text>
-                <Pressable onPress={() => hapusDariKeranjang(k.barang.id)} hitSlop={8}>
-                  <Ionicons name="trash-outline" size={18} color="#A32D2D" />
-                </Pressable>
-              </View>
-            ))
-          )}
-        </View>
-
-        <Pressable
-          onPress={() => setPickerVisible(true)}
-          className="flex-row items-center justify-center border border-dashed border-black/20 rounded-2xl py-3 mb-4 active:opacity-70"
-        >
-          <Ionicons name="add" size={16} color="#0F6E56" />
-          <Text className="text-brand text-sm font-medium ml-1">Tambah barang</Text>
-        </Pressable>
-
-        <Field
-          label="Catatan (opsional)"
-          value={catatan}
-          onChangeText={setCatatan}
-          multiline
-        />
-
-        <View className="flex-row items-center justify-between bg-brand rounded-card px-5 py-4 mb-2">
-          <Text className="text-white/80 text-sm">Total pesanan</Text>
-          <Text className="text-white text-lg font-semibold">{formatRupiah(total)}</Text>
-        </View>
-
-        {error ? <Text className="text-status-belum text-sm mb-2">{error}</Text> : null}
-
-        <Pressable
-          onPress={simpan}
-          disabled={saving}
-          className="bg-ink rounded-pill py-4 items-center mt-2 mb-10 active:opacity-80"
-        >
-          {saving ? (
-            <ActivityIndicator color="white" />
-          ) : (
-            <Text className="text-white font-medium">Simpan perubahan</Text>
-          )}
-        </Pressable>
-      </ScrollView>
-
-      <Modal visible={pickerVisible} animationType="slide" presentationStyle="pageSheet">
-        <SafeAreaView className="flex-1 bg-canvas">
-          <View className="flex-row items-center justify-between px-5 pt-4 pb-2">
-            <Text className="text-lg font-semibold text-ink">Pilih barang</Text>
-            <Pressable onPress={() => setPickerVisible(false)} hitSlop={8}>
-              <Ionicons name="close" size={22} color="#1F2320" />
-            </Pressable>
-          </View>
-          <FlatList
-            data={barangAktif}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={{ padding: 20, paddingTop: 8 }}
-            ItemSeparatorComponent={() => <View className="h-2" />}
-            ListEmptyComponent={
-              <Text className="text-ink-soft text-center mt-10">
-                Belum ada barang aktif. Tambahkan dulu di tab Barang.
+      <FlatList
+        data={data}
+        keyExtractor={(item) => item.pesanan_id}
+        contentContainerStyle={{ padding: 20, paddingTop: 8, paddingBottom: 40 }}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={() => muatData(periode)} />}
+        ItemSeparatorComponent={() => <View className="h-3" />}
+        ListHeaderComponent={
+          <View className="mb-4">
+            <View className="bg-brand rounded-card p-5 mb-3">
+              <Text className="text-xs text-white/70 mb-1">Omzet kotor</Text>
+              <Text className="text-3xl font-semibold text-white mb-3">
+                {formatRupiah(ringkasan.kotor)}
               </Text>
-            }
-            renderItem={({ item }) => (
-              <Pressable
-                onPress={() => tambahKeKeranjang(item)}
-                className="bg-surface rounded-card p-4 border border-black/5 flex-row justify-between items-center active:opacity-70"
-              >
+              <View className="flex-row items-center justify-between pt-3 border-t border-white/20">
                 <View>
-                  <Text className="text-ink font-medium">{item.nama}</Text>
-                  <Text className="text-ink-faint text-xs mt-0.5">
-                    {formatRupiah(item.harga_jual)} / {item.satuan}
+                  <Text className="text-[11px] text-white/70">Bersih</Text>
+                  <Text className="text-sm font-medium text-brand-light">
+                    {formatRupiah(ringkasan.bersih)}
                   </Text>
                 </View>
-                <Ionicons name="add-circle-outline" size={22} color="#0F6E56" />
-              </Pressable>
-            )}
-          />
-        </SafeAreaView>
-      </Modal>
+                <View>
+                  <Text className="text-[11px] text-white/70">Modal</Text>
+                  <Text className="text-sm font-medium text-white/90">
+                    {formatRupiah(ringkasan.modal)}
+                  </Text>
+                </View>
+                <View>
+                  <Text className="text-[11px] text-white/70">Pesanan lunas</Text>
+                  <Text className="text-sm font-medium text-white/90">
+                    {ringkasan.jumlahPesanan}
+                  </Text>
+                </View>
+              </View>
+            </View>
+            <Text className="text-sm text-ink-soft">Rincian transaksi</Text>
+          </View>
+        }
+        ListEmptyComponent={
+          !loading ? (
+            <View className="items-center mt-10">
+              <Text className="text-ink-soft">Belum ada transaksi lunas di periode ini</Text>
+            </View>
+          ) : null
+        }
+        renderItem={({ item }) => (
+          <View className="bg-surface rounded-card p-4 border border-black/5">
+            <View className="flex-row items-center justify-between mb-1">
+              <Text className="text-xs text-ink-faint">{item.nomor_pesanan}</Text>
+              <Text className="text-xs text-ink-faint">{formatTanggal(item.tanggal_lunas)}</Text>
+            </View>
+            <Text className="text-base font-medium text-ink mb-1">{item.nama_pembeli}</Text>
+            <View className="flex-row items-center justify-between">
+              <View className="flex-row items-center">
+                <Ionicons name="trending-up-outline" size={13} color="#3B6D11" />
+                <Text className="text-xs text-status-lunas ml-1">
+                  Bersih {formatRupiah(item.omzet_bersih)}
+                </Text>
+              </View>
+              <Text className="text-sm font-medium text-ink">{formatRupiah(item.omzet_kotor)}</Text>
+            </View>
+          </View>
+        )}
+      />
     </SafeAreaView>
   );
 }

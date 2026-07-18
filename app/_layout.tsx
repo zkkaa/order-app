@@ -30,7 +30,7 @@ function SplashKustom() {
         <View className="w-16 h-16 rounded-2xl bg-white/15 items-center justify-center mb-4">
           <Ionicons name="storefront-outline" size={30} color="white" />
         </View>
-        <Text className="text-2xl font-semibold text-white">Ayam Segar</Text>
+        <Text className="text-2xl font-semibold text-white">Notaku</Text>
         <Text className="mt-1.5 text-sm text-white/70">Kelola pesanan jadi lebih mudah</Text>
       </Animated.View>
     </View>

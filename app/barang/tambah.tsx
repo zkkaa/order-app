@@ -58,7 +58,7 @@ export default function TambahBarangScreen() {
       <ScrollView className="flex-1 px-5 pt-4" keyboardShouldPersistTaps="handled">
         <Field
           label="Nama barang"
-          placeholder="Contoh: Kepala ayam"
+          placeholder="Nama barang yang kamu jual"
           value={nama}
           onChangeText={setNama}
           error={errors.nama}
