@@ -4,7 +4,7 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { View, Text, Animated } from 'react-native';
+import { View, Text, Animated, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 // Cegah splash screen bawaan Expo hilang otomatis sebelum kita siap
@@ -22,16 +22,18 @@ function SplashKustom() {
   }, [fade, naik]);
 
   return (
-    <View className="flex-1 items-center justify-center bg-brand">
+    <View className="flex-1 items-center justify-center" style={{ backgroundColor: '#E0F7E9' }}>
       <Animated.View
         style={{ opacity: fade, transform: [{ translateY: naik }] }}
         className="items-center"
       >
-        <View className="w-16 h-16 rounded-2xl bg-white/15 items-center justify-center mb-4">
-          <Ionicons name="storefront-outline" size={30} color="white" />
-        </View>
-        <Text className="text-2xl font-semibold text-white">Notaku</Text>
-        <Text className="mt-1.5 text-sm text-white/70">Kelola pesanan jadi lebih mudah</Text>
+        <Image
+          source={require('../assets/splash-icon.png')}
+          style={{ width: 120, height: 120, marginBottom: 16 }}
+          resizeMode="contain"
+        />
+        <Text className="text-2xl font-semibold text-ink">Notaku</Text>
+        <Text className="mt-1.5 text-sm text-ink-soft">Kelola pesanan jadi lebih mudah</Text>
       </Animated.View>
     </View>
   );
