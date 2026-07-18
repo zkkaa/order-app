@@ -1,6 +1,6 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, FlatList, Pressable, TextInput, RefreshControl } from 'react-native';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
@@ -16,10 +16,19 @@ const FILTER_OPTIONS: { key: StatusPesanan | 'semua'; label: string }[] = [
 
 export default function PesananScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ status?: string }>();
   const [semuaPesanan, setSemuaPesanan] = useState<Pesanan[]>([]);
   const [loading, setLoading] = useState(true);
   const [pencarian, setPencarian] = useState('');
+  
   const [filterStatus, setFilterStatus] = useState<StatusPesanan | 'semua'>('semua');
+
+  useEffect(() => {
+    const valid: (StatusPesanan | 'semua')[] = ['belum_bayar', 'dalam_pengantaran', 'lunas'];
+    if (params.status && valid.includes(params.status as StatusPesanan)) {
+      setFilterStatus(params.status as StatusPesanan);
+    }
+  }, [params.status]);
 
   const muatData = useCallback(async () => {
     setLoading(true);

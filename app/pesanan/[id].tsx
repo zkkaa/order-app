@@ -90,11 +90,18 @@ export default function DetailPesananScreen() {
   return (
     <SafeAreaView className="flex-1 bg-canvas">
       <Stack.Screen options={{ headerShown: false }} />
-      <View className="flex-row items-center px-5 pt-4 pb-2">
-        <Pressable onPress={() => router.back()} hitSlop={8} className="mr-3">
-          <Ionicons name="arrow-back" size={22} color="#1F2320" />
-        </Pressable>
-        <Text className="text-xl font-semibold text-ink">Detail pesanan</Text>
+      <View className="flex-row items-center justify-between px-5 pt-4 pb-2">
+        <View className="flex-row items-center">
+          <Pressable onPress={() => router.back()} hitSlop={8} className="mr-3">
+            <Ionicons name="arrow-back" size={22} color="#1F2320" />
+          </Pressable>
+          <Text className="text-xl font-semibold text-ink">Detail pesanan</Text>
+        </View>
+        {pesanan.status !== 'lunas' && (
+          <Pressable onPress={() => router.push(`/pesanan/edit/${pesanan.id}`)} hitSlop={8}>
+            <Ionicons name="create-outline" size={22} color="#6B6F6C" />
+          </Pressable>
+        )}
       </View>
 
       <ScrollView className="flex-1 px-5 pt-2" contentContainerStyle={{ paddingBottom: 40 }}>
@@ -121,9 +128,8 @@ export default function DetailPesananScreen() {
           {items.map((item, idx) => (
             <View
               key={item.id}
-              className={`flex-row items-center justify-between px-4 py-3 ${
-                idx !== items.length - 1 ? 'border-b border-black/5' : ''
-              }`}
+              className={`flex-row items-center justify-between px-4 py-3 ${idx !== items.length - 1 ? 'border-b border-black/5' : ''
+                }`}
             >
               <View className="flex-1 pr-2">
                 <Text className="text-ink text-sm font-medium">{item.nama_barang_saat_itu}</Text>

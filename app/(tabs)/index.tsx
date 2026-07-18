@@ -81,20 +81,26 @@ export default function BerandaScreen() {
 
         {/* Kartu status pesanan */}
         <View className="flex-row gap-3 mb-4">
-          <View className="flex-1 bg-surface rounded-card p-4 border border-black/5">
+          <Pressable
+            onPress={() => router.push('/pesanan?status=belum_bayar')}
+            className="flex-1 bg-surface rounded-card p-4 border border-black/5 active:opacity-70"
+          >
             <View className="w-9 h-9 rounded-full bg-status-belumBg items-center justify-center mb-3">
               <Ionicons name="time-outline" size={18} color="#A32D2D" />
             </View>
             <Text className="text-2xl font-semibold text-ink">{ringkasan.belumBayar}</Text>
             <Text className="text-xs text-ink-soft mt-1">Belum bayar</Text>
-          </View>
-          <View className="flex-1 bg-surface rounded-card p-4 border border-black/5">
+          </Pressable>
+          <Pressable
+            onPress={() => router.push('/pesanan?status=dalam_pengantaran')}
+            className="flex-1 bg-surface rounded-card p-4 border border-black/5 active:opacity-70"
+          >
             <View className="w-9 h-9 rounded-full bg-status-prosesBg items-center justify-center mb-3">
               <Ionicons name="bicycle-outline" size={18} color="#854F0B" />
             </View>
             <Text className="text-2xl font-semibold text-ink">{ringkasan.dalamPengantaran}</Text>
             <Text className="text-xs text-ink-soft mt-1">Dalam pengantaran</Text>
-          </View>
+          </Pressable>
         </View>
 
         {/* Kartu omzet hari ini */}
